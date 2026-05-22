@@ -1,0 +1,438 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          UserRole
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  providerProfile   ProviderProfile?
+  employerProfile   EmployerProfile?
+  sentMessages      Message[] @relation("SentMessages")
+  receivedMessages  Message[] @relation("ReceivedMessages")
+  notifications     Notification[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  PROVIDER
+  EMPLOYER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+  DEACTIVATED
+}
+
+model ProviderProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName       String
+  lastName        String
+  title           String?
+  specialty       String
+  subSpecialty    String?
+  licenseNumber   String?
+  licenseState    String?
+  npiNumber       String?
+  yearsExperience Int?
+  bio             String?  @db.Text
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  latitude        Float?
+  longitude       Float?
+  preferredShift  ShiftPreference?
+  hourlyRateMin   Float?
+  hourlyRateMax   Float?
+  availability    Json?    // Weekly schedule slots
+  isAvailable     Boolean  @default(true)
+  profileComplete Float    @default(0) // 0-100 completion percentage
+
+  credentials     Credential[]
+  applications    Application[]
+  jobs            Job[]    @relation("JobProviders")
+  reviews         Review[] @relation("ProviderReviews")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("provider_profiles")
+}
+
+model EmployerProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName     String
+  ein             String?
+  contactName     String
+  contactPhone    String?
+  website         String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  latitude        Float?
+  longitude       Float?
+  companySize     String?
+  industry        String?  // Hospital, Clinic, Nursing Home, etc.
+  description     String?  @db.Text
+  logoUrl         String?
+  isVerified      Boolean  @default(false)
+
+  jobs            Job[]
+  reviews         Review[] @relation("EmployerReviews")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("employer_profiles")
+}
+
+model Credential {
+  id              String   @id @default(uuid())
+  providerId      String
+  provider        ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  type            CredentialType
+  title           String
+  issuingBody     String
+  licenseNumber   String?
+  issueDate       DateTime
+  expiryDate      DateTime?
+  status          CredentialStatus @default(ACTIVE)
+  documentUrl     String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt      DateTime?
+  verifiedBy      String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("credentials")
+}
+
+enum CredentialType {
+  MEDICAL_LICENSE
+  BOARD_CERTIFICATION
+  DEA_REGISTRATION
+  ACLS
+  BLS
+  PALS
+  NURSING_LICENSE
+  NP_LICENSE
+  PA_LICENSE
+  CPR
+  SPECIALTY_CERTIFICATION
+  OTHER
+}
+
+enum CredentialStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+model Job {
+  id              String   @id @default(uuid())
+  employerId      String
+  employer        EmployerProfile @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  title           String
+  specialty       String
+  subSpecialty    String?
+  description     String   @db.Text
+  requirements    String[] @default([])
+  responsibilities String[] @default([])
+
+  type            JobType
+  setting         JobSetting
+  shiftType       ShiftType
+  scheduleDetails String?
+
+  location        String
+  city            String
+  state           String
+  zipCode         String?
+  latitude        Float?
+  longitude       Float?
+  isRemote        Boolean  @default(false)
+
+  hourlyRate      Float?
+  salaryMin       Float?
+  salaryMax       Float?
+  benefits        String[] @default([])
+
+  status          JobStatus @default(ACTIVE)
+  startDate       DateTime?
+  duration        String?  // Temporary assignment length
+
+  applications    Application[]
+  assignedProviders ProviderProfile[] @relation("JobProviders")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expiresAt       DateTime?
+
+  @@map("jobs")
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TRAVEL
+  PER_DIEM
+  LOCUM_TENENS
+  RESIDENCY
+  FELLOWSHIP
+}
+
+enum JobSetting {
+  HOSPITAL
+  CLINIC
+  PRIVATE_PRACTICE
+  NURSING_HOME
+  URGENT_CARE
+  EMERGENCY_DEPARTMENT
+  SURGERY_CENTER
+  HOME_HEALTH
+  TELEMEDICINE
+  RESEARCH
+  ACADEMIC
+  OTHER
+}
+
+enum ShiftType {
+  DAY
+  NIGHT
+  EVENING
+  ROTATING
+  WEEKEND_ONLY
+  ON_CALL
+  FLEXIBLE
+}
+
+enum JobStatus {
+  ACTIVE
+  PAUSED
+  FILLED
+  EXPIRED
+  CANCELLED
+}
+
+model Application {
+  id              String   @id @default(uuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  providerId      String
+  provider        ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  status          ApplicationStatus @default(PENDING)
+  coverLetter     String?  @db.Text
+  proposedRate    Float?
+  availabilityStart DateTime?
+
+  interviews      Interview[]
+  messages        Message[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([jobId, providerId])
+  @@map("applications")
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWING
+  INTERVIEW_SCHEDULED
+  OFFER_EXTENDED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  HIRED
+}
+
+model Interview {
+  id              String   @id @default(uuid())
+  applicationId   String
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  scheduledAt     DateTime
+  duration      Int      // minutes
+  type            InterviewType @default(VIRTUAL)
+  location        String?
+  meetingLink     String?
+  notes           String?  @db.Text
+  status          InterviewStatus @default(SCHEDULED)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("interviews")
+}
+
+enum InterviewType {
+  IN_PERSON
+  VIRTUAL
+  PHONE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  senderId        String
+  sender          User     @relation("SentMessages", fields: [senderId], references: [id])
+  recipientId     String
+  recipient       User     @relation("ReceivedMessages", fields: [recipientId], references: [id])
+
+  applicationId   String?
+  application     Application? @relation(fields: [applicationId], references: [id])
+
+  content         String   @db.Text
+  attachments     Json?    // Array of {name, url, type}
+  isRead          Boolean  @default(false)
+  readAt          DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@map("messages")
+}
+
+model Payment {
+  id              String   @id @default(uuid())
+  payerId         String   // Employer
+  payeeId         String   // Provider
+
+  type            PaymentType
+  amount          Float
+  currency        String   @default("USD")
+  status          PaymentStatus @default(PENDING)
+
+  stripePaymentId String?
+  description     String?
+  metadata        Json?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("payments")
+}
+
+enum PaymentType {
+  PLACEMENT_FEE
+  SUBSCRIPTION
+  SHIFT_PAYMENT
+  BONUS
+  REFUND
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  DISPUTED
+}
+
+model Review {
+  id              String   @id @default(uuid())
+
+  providerId      String?
+  provider        ProviderProfile? @relation("ProviderReviews", fields: [providerId], references: [id])
+
+  employerId      String?
+  employer        EmployerProfile? @relation("EmployerReviews", fields: [employerId], references: [id])
+
+  reviewerId      String
+  rating          Int      // 1-5
+  professionalism Int?     // 1-5
+  communication   Int?     // 1-5
+  punctuality     Int?     // 1-5
+  skillLevel      Int?     // 1-5
+  comment         String?  @db.Text
+  isVisible       Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+
+  @@map("reviews")
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type            NotificationType
+  title           String
+  message         String
+  data            Json?
+  isRead          Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  APPLICATION_RECEIVED
+  APPLICATION_STATUS_CHANGE
+  INTERVIEW_SCHEDULED
+  MESSAGE_RECEIVED
+  JOB_MATCH
+  CREDENTIAL_EXPIRING
+  PAYMENT_RECEIVED
+  SYSTEM
+}
+
+model MatchScore {
+  id              String   @id @default(uuid())
+  providerId      String
+  jobId           String
+  score           Float    // 0-100
+  factors         Json     // Breakdown of scoring factors
+  isNotified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@unique([providerId, jobId])
+  @@map("match_scores")
+}

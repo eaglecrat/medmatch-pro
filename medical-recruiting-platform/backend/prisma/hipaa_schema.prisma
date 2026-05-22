@@ -1,0 +1,205 @@
+
+// HIPAA Compliance Layer
+model HIPAAAuditLog {
+  id              String   @id @default(uuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+
+  action          HIPAAAction
+  resourceType    String   // e.g., "ProviderProfile", "Credential", "Message"
+  resourceId      String?
+  details         Json?    // Action-specific details
+  ipAddress       String?
+  userAgent       String?
+  success         Boolean
+  failureReason   String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("hipaa_audit_logs")
+}
+
+enum HIPAAAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  EXPORT
+  PRINT
+  LOGIN
+  LOGOUT
+  ACCESS_DENIED
+  CONSENT_GIVEN
+  CONSENT_REVOKED
+}
+
+model BAARecord {
+  id              String   @id @default(uuid())
+  employerId      String
+  employer        EmployerProfile @relation(fields: [employerId], references: [id], onDelete: Cascade)
+
+  status          BAAStatus @default(PENDING)
+  signedAt        DateTime?
+  expiresAt       DateTime?
+  documentUrl     String?
+  version         String   @default("1.0")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("baa_records")
+}
+
+enum BAAStatus {
+  PENDING
+  SIGNED
+  EXPIRED
+  REVOKED
+}
+
+model PrivacyConsent {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  consentType     ConsentType
+  granted         Boolean
+  grantedAt       DateTime?
+  revokedAt       DateTime?
+  ipAddress       String?
+  documentVersion String   @default("1.0")
+
+  @@unique([userId, consentType])
+  @@map("privacy_consents")
+}
+
+enum ConsentType {
+  DATA_PROCESSING
+  MARKETING
+  THIRD_PARTY_SHARING
+  BACKGROUND_CHECK
+  CREDENTIAL_VERIFICATION
+  PHOTO_VIDEO
+}
+
+// State Medical Licensing Requirements
+model StateLicenseRequirement {
+  id              String   @id @default(uuid())
+  state           String   @unique // e.g., "CA", "TX", "NY"
+  stateName       String
+  isCompactState  Boolean  @default(false)
+  compactJoinedAt DateTime?
+
+  // Licensing requirements by provider type
+  physicianRequirements   Json?  // { licenseTypes: [...], renewalPeriod: "2 years", cmeHours: 50, etc. }
+  npRequirements          Json?
+  paRequirements            Json?
+  nursingRequirements       Json?
+
+  // Verification endpoints
+  verificationUrl         String?
+  verificationMethod      VerificationMethod @default(MANUAL)
+  apiEndpoint             String?
+  apiKeyRequired          Boolean @default(false)
+
+  notes                   String? @db.Text
+  lastVerifiedAt          DateTime?
+  isActive                Boolean @default(true)
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("state_license_requirements")
+}
+
+enum VerificationMethod {
+  MANUAL
+  API
+  WEB_SCRAPE
+  THIRD_PARTY
+}
+
+model CompactLicense {
+  id              String   @id @default(uuid())
+  providerId      String
+  provider        ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  compactType     CompactType
+  compactId       String   // IMLC issued ID
+  homeState       String   // State of principal license
+  issueDate       DateTime
+  expiryDate      DateTime
+  status          CompactStatus @default(ACTIVE)
+
+  participatingStates String[] // States where license is recognized
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("compact_licenses")
+}
+
+enum CompactType {
+  IMLC_PHYSICIAN      // Interstate Medical Licensure Compact
+  NLC_NURSING        // Nurse Licensure Compact
+  APC_PA             // PA Licensure Compact (if/when enacted)
+  PSYPACT            // Psychology Interjurisdictional Compact
+  ASLP               // Audiology & Speech-Language Pathology Compact
+  COUNSELING         // Counseling Compact
+  OT                 // Occupational Therapy Compact
+}
+
+enum CompactStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+  PENDING_RENEWAL
+}
+
+model SpecialtyRequirement {
+  id              String   @id @default(uuid())
+  specialty       String   // e.g., "Cardiology", "Emergency Medicine"
+  subSpecialty    String?
+
+  // Board certification requirements
+  requiredBoards  String[] // e.g., ["ABIM", "AOBIM"]
+  requiredCerts   String[] // e.g., ["ACLS", "BLS"]
+
+  // State-specific overrides
+  stateOverrides  Json?    // { "CA": { additionalRequirements: [...] } }
+
+  // Compact-specific
+  compactEligible Boolean  @default(true)
+  compactNotes    String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([specialty, subSpecialty])
+  @@map("specialty_requirements")
+}
+
+model DataRetentionPolicy {
+  id              String   @id @default(uuid())
+  dataType        String   // e.g., "audit_log", "message", "credential"
+  retentionDays   Int
+  archiveAfterDays Int?
+  destroyAfterDays Int?
+  legalHold       Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("data_retention_policies")
+}
+
+// Update User model to include HIPAA fields
+// (These would be added to the existing User model in schema.prisma)
+// hipaaAuthorized: Boolean @default(false)
+// hipaaAuthorizedAt: DateTime?
+// hipaaTrainingCompleted: Boolean @default(false)
+// hipaaTrainingCompletedAt: DateTime?
