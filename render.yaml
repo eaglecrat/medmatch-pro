@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: medmatch-frontend
+    runtime: docker
+    rootDir: medical-recruiting-platform/frontend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 80
+    healthCheckPath: /health
+    plan: free
